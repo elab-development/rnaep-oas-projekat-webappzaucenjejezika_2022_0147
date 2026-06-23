@@ -1,8 +1,13 @@
-import express from 'express'; import cors from 'cors'; import crypto from 'crypto';
-const app=express(); app.use(cors()); app.use(express.json({limit:'5mb'}));
+import express from 'express'; import crypto from 'crypto';
+import { securityHeaders, corsAllowlist, sanitizeBody } from './security.js';
+import { metricsMiddleware, mountMetrics } from './metrics.js';
+const app=express();
+app.use(securityHeaders()); app.use(corsAllowlist()); app.use(metricsMiddleware);
+app.use(express.json({limit:'5mb'})); app.use(sanitizeBody);
 // In-memory registar (u produkciji: eksterni Cloud Storage / S3)
 const store=new Map();
 app.get('/health',(_q,r)=>r.json({status:'ok',service:'media-service'}));
+mountMetrics(app);
 app.post('/api/media',(req,res)=>{
   const { filename, contentType } = req.body;
   const id=crypto.randomUUID();

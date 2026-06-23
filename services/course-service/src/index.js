@@ -1,13 +1,18 @@
 import express from 'express';
-import cors from 'cors';
 import { pool, initDb } from './db.js';
 import { authRequired, isAdmin } from './auth.js';
-import { UserClient, LessonClient, connectBroker, publish } from './clients.js';
+import { UserClient, LessonClient, connectBroker, publish, TOPICS } from './clients.js';
+import { securityHeaders, corsAllowlist, sanitizeBody } from './security.js';
+import { metricsMiddleware, mountMetrics } from './metrics.js';
 
 const app = express();
-app.use(cors());
+app.use(securityHeaders());
+app.use(corsAllowlist());
+app.use(metricsMiddleware);
 app.use(express.json());
+app.use(sanitizeBody);
 app.get('/health', (_q, r) => r.json({ status: 'ok', service: 'course-service' }));
+mountMetrics(app);
 
 // ---------- mapiranja (isti oblik kao Laravel Resource klase) ----------
 const langRes = (l) => l && ({ id: l.id, name: l.name, imgUrl: l.img_url });
@@ -134,7 +139,7 @@ app.post('/api/enrollments', authRequired, async (req, res) => {
       "INSERT INTO enrollments(course_id,student_id,status) VALUES($1,$2,'active') RETURNING id",
       [course_id, student_id]);
     const [enr] = await enrollmentRows('WHERE e.id=$1', [rows[0].id], 1);
-    publish('enrollment.created', { type: 'EnrollmentCreated', ...enr });
+    publish(TOPICS.ENROLLMENT_CREATED, { type: 'EnrollmentCreated', ...enr }, String(enr.id));
     res.json({ enrollment: enr });
   } catch (e) {
     if (e.code === '23505') return res.status(409).json({ error: 'Already enrolled' });
@@ -152,7 +157,7 @@ app.put('/api/enrollments/:id', authRequired, async (req, res) => {
     return res.status(403).json({ error: 'Forbidden' });
   await pool.query('UPDATE enrollments SET status=$1, updated_at=now() WHERE id=$2', [status, req.params.id]);
   const [enr] = await enrollmentRows('WHERE e.id=$1', [req.params.id], 1);
-  publish('enrollment.updated', { type: 'EnrollmentUpdated', ...enr });
+  publish(TOPICS.ENROLLMENT_STATUS_CHANGED, { type: 'EnrollmentStatusChanged', ...enr }, String(enr.id));
   res.json({ enrollment: enr });
 });
 app.get('/api/student/:id/enrollments', authRequired, async (req, res) => {

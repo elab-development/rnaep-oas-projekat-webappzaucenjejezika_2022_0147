@@ -1,8 +1,11 @@
 {
   "name": "progress-service",
   "version": "1.0.0",
-  "description": "Progress Service - napredak korisnika (MongoDB) + RabbitMQ consumer",
+  "description": "Progress Service - CQRS read model (MongoDB) + Kafka consumer (progress-updated)",
   "type": "module", "main": "src/index.js",
   "scripts": { "start": "node src/index.js" },
-  "dependencies": { "amqplib":"^0.10.4","cors":"^2.8.5","express":"^4.19.2","mongoose":"^8.5.0" }
+  "dependencies": {
+    "cors": "^2.8.5", "express": "^4.19.2", "helmet": "^7.1.0",
+    "kafkajs": "^2.2.4", "mongoose": "^8.5.0", "prom-client": "^15.1.3", "xss": "^1.0.15"
+  }
 }

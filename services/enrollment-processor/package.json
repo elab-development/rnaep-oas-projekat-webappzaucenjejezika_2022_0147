@@ -1,0 +1,10 @@
+{
+  "name": "enrollment-processor",
+  "version": "1.0.0",
+  "description": "Hibridni servis (Consumer+Producer): enrollment-created -> notification-requested + progress-updated",
+  "type": "module", "main": "src/index.js",
+  "scripts": { "start": "node src/index.js" },
+  "dependencies": {
+    "express": "^4.19.2", "kafkajs": "^2.2.4", "prom-client": "^15.1.3"
+  }
+}

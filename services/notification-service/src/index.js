@@ -1,9 +1,14 @@
-import express from 'express'; import cors from 'cors';
+import express from 'express';
 import { pool, initDb } from './db.js';
 import { EmailClient } from './clients.js';
-import { startConsumer } from './consumer.js';
-const app=express(); app.use(cors()); app.use(express.json());
+import { startKafkaConsumer } from './consumer.js';
+import { securityHeaders, corsAllowlist, sanitizeBody } from './security.js';
+import { metricsMiddleware, mountMetrics } from './metrics.js';
+const app=express();
+app.use(securityHeaders()); app.use(corsAllowlist()); app.use(metricsMiddleware);
+app.use(express.json()); app.use(sanitizeBody);
 app.get('/health',(_q,r)=>r.json({status:'ok',service:'notification-service'}));
+mountMetrics(app);
 
 // Direktan zahtev (npr. od User Service-a) - NotificationController
 app.post('/api/notifications/send', async (req,res)=>{
@@ -17,5 +22,5 @@ app.get('/api/notifications', async (_q,res)=>{
 });
 
 const PORT=process.env.PORT||3006;
-initDb().then(()=>{ startConsumer(); app.listen(PORT,()=>console.log(`[notification-service] :${PORT}`)); })
+initDb().then(()=>{ startKafkaConsumer(); app.listen(PORT,()=>console.log(`[notification-service] :${PORT}`)); })
   .catch(e=>{console.error(e);process.exit(1);});

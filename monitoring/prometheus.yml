@@ -1,0 +1,18 @@
+global:
+  scrape_interval: 10s
+  evaluation_interval: 10s
+
+scrape_configs:
+  - job_name: 'microservices'
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - 'gateway:8080'
+          - 'user-service:3001'
+          - 'course-service:3002'
+          - 'lesson-service:3003'
+          - 'assessment-service:3004'
+          - 'progress-service:3005'
+          - 'notification-service:3006'
+          - 'speech-service:3007'
+          - 'enrollment-processor:3009'

@@ -1,56 +1,56 @@
-// Pozivi ka drugim servisima (interna mreza) + event producer (RabbitMQ).
-import amqp from 'amqplib';
+// Cross-service pozivi sa CIRCUIT BREAKER paternom (opossum) + Kafka producer.
+import CircuitBreaker from 'opossum';
+import { publish as kafkaPublish, ensureTopics, getProducer, withRetry, TOPICS } from './kafka.js';
 
 const USER   = process.env.USER_SERVICE_URL   || 'http://user-service:3001';
 const LESSON = process.env.LESSON_SERVICE_URL || 'http://lesson-service:3003';
 
+const BREAKER = { timeout: 4000, errorThresholdPercentage: 50, resetTimeout: 8000 };
+
+async function _usersByIds(ids = []) {
+  const uniq = [...new Set(ids.filter(Boolean))];
+  if (!uniq.length) return {};
+  const r = await fetch(`${USER}/internal/users?ids=${uniq.join(',')}`);
+  if (!r.ok) throw new Error('user-service ' + r.status);
+  const arr = await r.json();
+  return Object.fromEntries(arr.map(u => [u.id, u]));
+}
+async function _userOne(id) {
+  const r = await fetch(`${USER}/internal/users/${id}`);
+  if (!r.ok) throw new Error('user-service ' + r.status);
+  return r.json();
+}
+async function _userStats() {
+  const r = await fetch(`${USER}/internal/users/stats`);
+  if (!r.ok) throw new Error('user-service ' + r.status);
+  return r.json();
+}
+async function _lessonStats() {
+  const r = await fetch(`${LESSON}/internal/lessons/stats`);
+  if (!r.ok) throw new Error('lesson-service ' + r.status);
+  return r.json();
+}
+
+// Svaki poziv ide kroz svoj prekidac sa fallback-om (otporno na pad zavisnog servisa).
+const byIdsCB  = new CircuitBreaker(_usersByIds, BREAKER); byIdsCB.fallback(() => ({}));
+const oneCB    = new CircuitBreaker(_userOne, BREAKER);    oneCB.fallback(() => null);
+const uStatsCB = new CircuitBreaker(_userStats, BREAKER);  uStatsCB.fallback(() => ({ users_total: 0, users_by_role: [] }));
+const lStatsCB = new CircuitBreaker(_lessonStats, BREAKER);lStatsCB.fallback(() => ({ lessons_total: 0, lessons_per_month: [] }));
+
 export const UserClient = {
-  async byIds(ids = []) {
-    const uniq = [...new Set(ids.filter(Boolean))];
-    if (!uniq.length) return {};
-    try {
-      const r = await fetch(`${USER}/internal/users?ids=${uniq.join(',')}`);
-      const arr = await r.json();
-      return Object.fromEntries(arr.map(u => [u.id, u]));
-    } catch { return {}; }
-  },
-  async one(id) {
-    try { const r = await fetch(`${USER}/internal/users/${id}`); return r.ok ? await r.json() : null; }
-    catch { return null; }
-  },
-  async stats() {
-    try { const r = await fetch(`${USER}/internal/users/stats`); return await r.json(); }
-    catch { return { users_total: 0, users_by_role: [] }; }
-  }
+  byIds: (ids) => byIdsCB.fire(ids),
+  one:   (id)  => oneCB.fire(id),
+  stats: ()    => uStatsCB.fire()
 };
+export const LessonClient = { stats: () => lStatsCB.fire() };
 
-export const LessonClient = {
-  async stats() {
-    try { const r = await fetch(`${LESSON}/internal/lessons/stats`); return await r.json(); }
-    catch { return { lessons_total: 0, lessons_per_month: [] }; }
-  }
-};
-
-// --- Event producer ---
-const RURL = process.env.RABBITMQ_URL || 'amqp://guest:guest@rabbitmq:5672';
-const EXCHANGE = 'learning.events';
-let channel = null;
-export async function connectBroker(retries = 10) {
-  while (retries--) {
-    try {
-      const conn = await amqp.connect(RURL);
-      channel = await conn.createChannel();
-      await channel.assertExchange(EXCHANGE, 'topic', { durable: true });
-      console.log('[course-service] povezan na RabbitMQ');
-      return;
-    } catch (e) {
-      console.log('[course-service] cekam RabbitMQ...', e.message);
-      await new Promise(r => setTimeout(r, 4000));
-    }
-  }
+// --- Kafka producer ---
+export async function connectBroker() {
+  await withRetry(async () => {
+    await ensureTopics([TOPICS.ENROLLMENT_CREATED, TOPICS.ENROLLMENT_STATUS_CHANGED]);
+    await getProducer();
+  }, 'kafka');
+  console.log('[course-service] Kafka producer spreman');
 }
-export function publish(routingKey, payload) {
-  if (!channel) return;
-  channel.publish(EXCHANGE, routingKey, Buffer.from(JSON.stringify(payload)), { persistent: true });
-  console.log(`[course-service] event ${routingKey}`);
-}
+export const publish = kafkaPublish;
+export { TOPICS };

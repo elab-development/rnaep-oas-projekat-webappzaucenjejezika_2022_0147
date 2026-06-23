@@ -1,0 +1,41 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Servisi - status (up)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+      "targets": [ { "expr": "up", "legendFormat": "{{instance}}" } ]
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP zahtevi (rate/min) po servisu",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 0 },
+      "targets": [ { "expr": "sum(rate(http_requests_total[1m])) by (service)", "legendFormat": "{{service}}" } ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Kafka poruke po topic-u (produced/consumed)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [ { "expr": "sum(kafka_messages_total) by (topic, role)", "legendFormat": "{{topic}} ({{role}})" } ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Iskoriscenost memorije procesa (RSS)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [ { "expr": "process_resident_memory_bytes", "legendFormat": "{{service}}" } ]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": [ "duolingo", "microservices" ],
+  "templating": { "list": [] },
+  "time": { "from": "now-30m", "to": "now" },
+  "title": "Duolingo - pregled mikroservisa",
+  "uid": "duolingo-overview",
+  "version": 1
+}

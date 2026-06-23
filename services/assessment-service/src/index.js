@@ -1,8 +1,13 @@
-import express from 'express'; import cors from 'cors';
+import express from 'express';
 import { pool, initDb } from './db.js';
-import { connectBroker, publish } from './eventProducer.js';
-const app=express(); app.use(cors()); app.use(express.json());
+import { connectBroker, publish, TOPICS } from './eventProducer.js';
+import { securityHeaders, corsAllowlist, sanitizeBody } from './security.js';
+import { metricsMiddleware, mountMetrics } from './metrics.js';
+const app=express();
+app.use(securityHeaders()); app.use(corsAllowlist()); app.use(metricsMiddleware);
+app.use(express.json()); app.use(sanitizeBody);
 app.get('/health',(_q,r)=>r.json({status:'ok',service:'assessment-service'}));
+mountMetrics(app);
 
 app.get('/api/assessments', async (_q,res)=>{ const {rows}=await pool.query('SELECT id,title,pass_score FROM tests'); res.json(rows); });
 app.get('/api/assessments/:id', async (req,res)=>{
@@ -23,8 +28,9 @@ app.post('/api/assessments/:id/submit', async (req,res)=>{
   for(const row of q.rows){ max+=row.points; if(answers?.[row.id]===row.correct_index) score+=row.points; }
   const pct=max?Math.round(score/max*100):0;
   const passed=pct>=t.rows[0].pass_score;
-  publish('test.completed', { type:'TestCompleted', userId, testId:req.params.id,
-    lessonId:t.rows[0].lesson_id, score:pct, maxScore:100, passed, submittedAt:new Date().toISOString() });
+  publish(TOPICS.PROGRESS_UPDATED, { type:'TestCompleted', student_id:userId, course_id:t.rows[0].course_id||0,
+    testId:req.params.id, lessonId:t.rows[0].lesson_id, score:pct, passed, source:'assessment',
+    submittedAt:new Date().toISOString() }, String(userId));
   res.json({ score:pct, passed, correct:score, max });
 });
 

@@ -1,13 +1,18 @@
 import express from 'express';
-import cors from 'cors';
 import { pool, initDb, seedFromCourses } from './db.js';
 import { authRequired, isAdmin } from './auth.js';
 import { DictionaryClient, TranslateClient } from './externalClients.js';
+import { securityHeaders, corsAllowlist, sanitizeBody } from './security.js';
+import { metricsMiddleware, mountMetrics } from './metrics.js';
 
 const app = express();
-app.use(cors());
+app.use(securityHeaders());
+app.use(corsAllowlist());
+app.use(metricsMiddleware);
 app.use(express.json());
+app.use(sanitizeBody);
 app.get('/health', (_q, r) => r.json({ status: 'ok', service: 'lesson-service' }));
+mountMetrics(app);
 
 const USER = process.env.USER_SERVICE_URL || 'http://user-service:3001';
 async function teacherNames(ids) {

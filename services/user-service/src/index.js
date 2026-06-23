@@ -1,16 +1,21 @@
 import express from 'express';
-import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import { pool, initDb } from './db.js';
 import { issueToken, authRequired } from './auth.js';
+import { securityHeaders, corsAllowlist, sanitizeBody } from './security.js';
+import { metricsMiddleware, mountMetrics } from './metrics.js';
 
 const app = express();
-app.use(cors());
+app.use(securityHeaders());
+app.use(corsAllowlist());
+app.use(metricsMiddleware);
 app.use(express.json());
+app.use(sanitizeBody);
 
 const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, role: u.role });
 
 app.get('/health', (_q, r) => r.json({ status: 'ok', service: 'user-service' }));
+mountMetrics(app);
 
 // --- AuthController ---
 // POST /api/register  -> { data, access_token, token_type }

@@ -1,13 +1,15 @@
-// API Gateway - jedinstvena ulazna tacka sistema (C4: Container "API Gateway").
-// Prosledjuje (reverse proxy) zahteve odgovarajucim mikroservisima.
-// Ugovor /api/* je 1:1 sa frontendom iz projekta Internet tehnologija.
+// API Gateway - jedinstvena ulazna tacka. Reverse-proxy + sigurnosni sloj + metrike.
 import express from 'express';
-import cors from 'cors';
 import morgan from 'morgan';
 import { createProxyMiddleware } from 'http-proxy-middleware';
+import { securityHeaders, corsAllowlist, csrfOriginGuard } from './security.js';
+import { metricsMiddleware, mountMetrics } from './metrics.js';
 
 const app = express();
-app.use(cors());
+app.use(securityHeaders());        // XSS/clickjacking/MIME zaglavlja (helmet)
+app.use(corsAllowlist());          // CORS: samo autorizovani domeni (klijent)
+app.use(csrfOriginGuard);          // anti-CSRF: Origin provera za POST/PUT/DELETE
+app.use(metricsMiddleware);        // Prometheus metrike
 app.use(morgan('dev'));
 
 const USER   = process.env.USER_SERVICE_URL         || 'http://user-service:3001';
@@ -19,44 +21,30 @@ const NOTIF  = process.env.NOTIFICATION_SERVICE_URL || 'http://notification-serv
 const SPEECH = process.env.SPEECH_SERVICE_URL       || 'http://speech-service:3007';
 const MEDIA  = process.env.MEDIA_SERVICE_URL         || 'http://media-service:3008';
 
-// Redosled je bitan: specificniji prefiksi pre opstijih.
 const routes = [
-  // --- Auth (user-service) ---
-  ['/api/register',     USER],
-  ['/api/login',        USER],
-  ['/api/logout',       USER],
-  ['/api/me',           USER],
-
-  // --- Languages / Courses / Enrollments / Admin (course-service) ---
-  ['/api/languages',    COURSE],
-  ['/api/courses',      COURSE],
-  ['/api/teacher',      COURSE],   // /api/teacher/:id/courses
-  ['/api/enrollments',  COURSE],
-  ['/api/student',      COURSE],   // /api/student/:id/enrollments
-  ['/api/admin',        COURSE],   // /api/admin/stats
-
-  // --- Lessons / Translate / Dictionary (lesson-service) ---
-  ['/api/lessons',      LESSON],
-  ['/api/translate',    LESSON],
-  ['/api/dictionary',   LESSON],
-
-  // --- Ostali servisi projektovani u Domacem I (dostupni kroz gateway) ---
-  ['/api/assessments',  ASSESS],
-  ['/api/progress',     PROGR],
-  ['/api/notifications',NOTIF],
-  ['/api/speech',       SPEECH],
-  ['/api/media',        MEDIA]
+  ['/api/register', USER], ['/api/login', USER], ['/api/logout', USER], ['/api/me', USER],
+  ['/api/languages', COURSE], ['/api/courses', COURSE], ['/api/teacher', COURSE],
+  ['/api/enrollments', COURSE], ['/api/student', COURSE], ['/api/admin', COURSE],
+  ['/api/lessons', LESSON], ['/api/translate', LESSON], ['/api/dictionary', LESSON],
+  ['/api/assessments', ASSESS], ['/api/progress', PROGR], ['/api/notifications', NOTIF],
+  ['/api/speech', SPEECH], ['/api/media', MEDIA]
 ];
 
-app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'api-gateway' }));
+app.get('/health', (_q, r) => r.json({ status: 'ok', service: 'api-gateway' }));
+mountMetrics(app);                 // /metrics za Prometheus
 
 for (const [path, target] of routes) {
   app.use(path, createProxyMiddleware({
-    target,
-    changeOrigin: true,
-    pathRewrite: (p, req) => req.originalUrl // zadrzi pun /api/... put ka servisu
+    target, changeOrigin: true,
+    pathRewrite: (p, req) => req.originalUrl
   }));
 }
+
+// Centralni error handler - bez curenja stack trace-a klijentu
+app.use((err, _req, res, _next) => {
+  console.error('[gateway] error:', err.message);
+  res.status(500).json({ error: 'Interna greska' });
+});
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log(`[gateway] slusa na :${PORT}`));

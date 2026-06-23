@@ -1,0 +1,75 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    name: Testovi (unit/funkcionalni)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [ user-service, course-service, lesson-service ]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install
+        working-directory: services/${{ matrix.service }}
+        run: npm install --no-audit --no-fund
+      - name: Run tests
+        working-directory: services/${{ matrix.service }}
+        run: npm test
+
+  build:
+    name: Build & push Docker image
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - { name: gateway,              context: ./gateway }
+          - { name: frontend,             context: ./frontend }
+          - { name: user-service,         context: ./services/user-service }
+          - { name: course-service,       context: ./services/course-service }
+          - { name: lesson-service,       context: ./services/lesson-service }
+          - { name: assessment-service,   context: ./services/assessment-service }
+          - { name: progress-service,     context: ./services/progress-service }
+          - { name: notification-service, context: ./services/notification-service }
+          - { name: enrollment-processor, context: ./services/enrollment-processor }
+          - { name: speech-service,       context: ./services/speech-service }
+          - { name: media-service,        context: ./services/media-service }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      # Build za svaki PR/push (provera da se image gradi)
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          push: false
+          tags: ${{ matrix.name }}:ci
+
+      # Push na GitHub Container Registry samo na push u main/develop
+      - name: Log in to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build & push to GHCR
+        if: github.event_name == 'push'
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          tags: ghcr.io/${{ github.repository }}/${{ matrix.name }}:latest
