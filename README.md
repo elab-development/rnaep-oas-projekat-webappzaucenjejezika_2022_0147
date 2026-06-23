@@ -6,7 +6,7 @@ Korisnički interfejs (React + Vite) preuzet je iz projekta sa predmeta
 realizovan kao skup nezavisnih mikroservisa (princip *database-per-service*),
 uz asinhronu komunikaciju preko **RabbitMQ** message broker-a.
 
-- **Studenti:** Stefan (2022/0147), Bogdan Mrdeljić (2022/0048), Luka Arsov (2022/0475)
+- **Studenti:** Stefan Božić (2022/0147), Luka Arsov (2022/0475)
 - **Repo (GitHub Classroom):** `rnaep-oas-projekat-webappzaucenjejezika_2022_0147`
 
 ---
