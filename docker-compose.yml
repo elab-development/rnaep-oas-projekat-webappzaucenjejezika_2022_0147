@@ -1,0 +1,201 @@
+# ===========================================================================
+#  LinguaLearn - mikroservisna platforma za ucenje stranih jezika
+#  Orkestracija celog okruzenja:   docker compose up --build
+#  Klijent (UI) iz projekta Internet tehnologija, prevezan na API Gateway.
+# ===========================================================================
+services:
+
+  # ---------------- BAZE PODATAKA (Database per service) -------------------
+  user-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: user_db
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
+    volumes: [ "user-data:/var/lib/postgresql/data" ]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      retries: 10
+
+  course-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: course_db
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
+    volumes: [ "course-data:/var/lib/postgresql/data" ]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      retries: 10
+
+  lesson-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: lesson_db
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
+    volumes: [ "lesson-data:/var/lib/postgresql/data" ]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      retries: 10
+
+  assessment-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: assessment_db
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
+    volumes: [ "assessment-data:/var/lib/postgresql/data" ]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      retries: 10
+
+  notification-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: notification_db
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
+    volumes: [ "notification-data:/var/lib/postgresql/data" ]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      retries: 10
+
+  progress-db:
+    image: mongo:7
+    volumes: [ "progress-data:/data/db" ]
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.runCommand('ping')"]
+      interval: 5s
+      retries: 10
+
+  # ---------------- INFRASTRUKTURA -----------------------------------------
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    ports:
+      - "15672:15672"          # web konzola: http://localhost:15672  (guest/guest)
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      retries: 10
+
+  # EKSTERNI API (open-source, self-hostovan, bez kljuca): LibreTranslate
+  libretranslate:
+    image: libretranslate/libretranslate:latest
+    environment:
+      LT_LOAD_ONLY: "en,de,es,fr,it,pt"
+    ports:
+      - "5000:5000"            # prvo pokretanje skida jezicke modele (~par minuta)
+    volumes: [ "lt-models:/home/libretranslate/.local" ]
+
+  # ---------------- MIKROSERVISI -------------------------------------------
+  user-service:
+    build: ./services/user-service
+    environment:
+      DB_HOST: user-db
+      DB_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
+      JWT_SECRET: "${JWT_SECRET:-dev_shared_secret}"
+    depends_on:
+      user-db: { condition: service_healthy }
+
+  course-service:
+    build: ./services/course-service
+    environment:
+      DB_HOST: course-db
+      DB_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
+      JWT_SECRET: "${JWT_SECRET:-dev_shared_secret}"
+      USER_SERVICE_URL: http://user-service:3001
+      LESSON_SERVICE_URL: http://lesson-service:3003
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      course-db: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      user-service: { condition: service_started }
+
+  lesson-service:
+    build: ./services/lesson-service
+    environment:
+      DB_HOST: lesson-db
+      DB_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
+      JWT_SECRET: "${JWT_SECRET:-dev_shared_secret}"
+      USER_SERVICE_URL: http://user-service:3001
+      COURSE_SERVICE_URL: http://course-service:3002
+      DICTIONARY_API_URL: https://api.dictionaryapi.dev/api/v2/entries
+      LIBRETRANSLATE_URL: http://libretranslate:5000
+    depends_on:
+      lesson-db: { condition: service_healthy }
+      course-service: { condition: service_started }
+
+  assessment-service:
+    build: ./services/assessment-service
+    environment:
+      DB_HOST: assessment-db
+      DB_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      assessment-db: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+
+  progress-service:
+    build: ./services/progress-service
+    environment:
+      MONGO_URL: mongodb://progress-db:27017/progress_db
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      progress-db: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+
+  notification-service:
+    build: ./services/notification-service
+    environment:
+      DB_HOST: notification-db
+      DB_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      notification-db: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+
+  speech-service:
+    build: ./services/speech-service
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      rabbitmq: { condition: service_healthy }
+
+  media-service:
+    build: ./services/media-service
+
+  # ---------------- API GATEWAY (jedinstvena ulazna tacka) -----------------
+  gateway:
+    build: ./gateway
+    ports:
+      - "8080:8080"
+    depends_on:
+      - user-service
+      - course-service
+      - lesson-service
+      - assessment-service
+      - progress-service
+      - notification-service
+      - speech-service
+      - media-service
+
+  # ---------------- KLIJENTSKA APLIKACIJA (UI) -----------------------------
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: "http://localhost:8080"   # browser -> API Gateway
+    ports:
+      - "3000:80"
+    depends_on:
+      - gateway
+
+volumes:
+  user-data: {}
+  course-data: {}
+  lesson-data: {}
+  assessment-data: {}
+  notification-data: {}
+  progress-data: {}
+  lt-models: {}
