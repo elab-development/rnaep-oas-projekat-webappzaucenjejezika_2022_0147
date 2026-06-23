@@ -1,20 +1,11 @@
-# Dependencies
 node_modules/
-
-# Build outputs
 dist/
 build/
-coverage/
-
-# Environment files
 .env
-.env.*
-!.env.example
-
-# Logs
 *.log
 npm-debug.log*
-.*tmp/
-_tmp_*/
-plan*
-
+.DS_Store
+coverage/
+.vite/
+lt-models/
+pgdata/
