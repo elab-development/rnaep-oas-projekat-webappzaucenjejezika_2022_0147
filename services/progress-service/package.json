@@ -1,0 +1,8 @@
+{
+  "name": "progress-service",
+  "version": "1.0.0",
+  "description": "Progress Service - napredak korisnika (MongoDB) + RabbitMQ consumer",
+  "type": "module", "main": "src/index.js",
+  "scripts": { "start": "node src/index.js" },
+  "dependencies": { "amqplib":"^0.10.4","cors":"^2.8.5","express":"^4.19.2","mongoose":"^8.5.0" }
+}
