@@ -14,7 +14,6 @@ app.use(sanitizeBody);
 app.get('/health', (_q, r) => r.json({ status: 'ok', service: 'course-service' }));
 mountMetrics(app);
 
-// ---------- mapiranja (isti oblik kao Laravel Resource klase) ----------
 const langRes = (l) => l && ({ id: l.id, name: l.name, imgUrl: l.img_url });
 const courseRes = (c) => ({
   id: c.id, title: c.title, language_id: c.language_id,
@@ -25,7 +24,6 @@ const SELECT_COURSE = `
   SELECT c.*, l.id AS l_id, l.name AS l_name, l.img_url AS l_img
   FROM courses c LEFT JOIN languages l ON l.id = c.language_id`;
 
-// ===================== LANGUAGES =====================
 app.get('/api/languages', async (_q, res) => {
   const { rows } = await pool.query('SELECT * FROM languages ORDER BY name');
   res.json({ languages: rows.map(langRes) });
@@ -58,7 +56,6 @@ app.delete('/api/languages/:id', authRequired, async (req, res) => {
   res.json({ message: 'deleted' });
 });
 
-// ===================== COURSES =====================
 app.get('/api/courses', async (_q, res) => {
   const { rows } = await pool.query(`${SELECT_COURSE} ORDER BY c.is_active DESC, c.title`);
   res.json({ courses: rows.map(courseRes) });
@@ -105,7 +102,6 @@ app.delete('/api/courses/:id', authRequired, async (req, res) => {
   res.json({ message: 'deleted' });
 });
 
-// ===================== ENROLLMENTS =====================
 async function enrollmentRows(where = '', params = [], limit = 200) {
   const { rows } = await pool.query(
     `SELECT e.*, c.title AS course_title FROM enrollments e
@@ -124,7 +120,6 @@ app.get('/api/enrollments', authRequired, async (req, res) => {
   const per_page = Math.min(parseInt(req.query.per_page, 10) || 50, 200);
   const cond = []; const params = [];
   if (course_id) { params.push(course_id); cond.push(`e.course_id=$${params.length}`); }
-  // IDOR zastita: student moze da vidi ISKLJUCIVO svoje upise; teacher/admin vide sve
   if (req.user.role === 'student') {
     params.push(req.user.sub); cond.push(`e.student_id=$${params.length}`);
   } else if (student_id) {
@@ -172,7 +167,6 @@ app.get('/api/student/:id/enrollments', authRequired, async (req, res) => {
   res.json({ student, enrollments: await enrollmentRows('WHERE e.student_id=$1', [sid]) });
 });
 
-// ===================== ADMIN STATS =====================
 app.get('/api/admin/stats', authRequired, async (req, res) => {
   if (!isAdmin(req.user)) return res.status(403).json({ error: 'Only admins can access this resource' });
 
@@ -194,7 +188,6 @@ app.get('/api/admin/stats', authRequired, async (req, res) => {
     `SELECT c.title AS label, COUNT(e.id) AS value FROM enrollments e
      JOIN courses c ON c.id=e.course_id GROUP BY c.title ORDER BY value DESC LIMIT 5`));
 
-  // top teacheri po aktivnim kursevima -> imena iz user-service
   const tt = await pool.query(
     `SELECT teacher_id, COUNT(id) AS value FROM courses
      WHERE is_active=true AND teacher_id IS NOT NULL
