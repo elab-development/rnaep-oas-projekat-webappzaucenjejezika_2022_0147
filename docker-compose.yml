@@ -1,11 +1,4 @@
-# ===========================================================================
-#  Duolingo - mikroservisna platforma (Domaci 2 + Seminarski)
-#  EDA (Kafka) | CI/CD | Security | Monitoring (Prometheus+Grafana) | paterni
-#  Pokretanje:  docker compose up --build
-# ===========================================================================
 services:
-
-  # ---------------- BAZE PODATAKA (Database per service) -------------------
   user-db:
     image: postgres:16-alpine
     environment: { POSTGRES_DB: user_db, POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}" }
@@ -40,8 +33,6 @@ services:
     image: mongo:7
     volumes: [ "progress-data:/data/db" ]
     healthcheck: { test: ["CMD","mongosh","--eval","db.runCommand('ping')"], interval: 5s, retries: 10 }
-
-  # ---------------- MESSAGE BROKER: Apache Kafka (KRaft, bez ZooKeeper-a) ---
   kafka:
     image: apache/kafka:3.7.0
     environment:
@@ -64,15 +55,11 @@ services:
       interval: 10s
       timeout: 10s
       retries: 15
-
-  # ---------------- EKSTERNI API (open-source): LibreTranslate --------------
   libretranslate:
     image: libretranslate/libretranslate:latest
     environment: { LT_LOAD_ONLY: "en,de,es,fr,it,pt" }
     ports: [ "5000:5000" ]
     volumes: [ "lt-models:/home/libretranslate/.local" ]
-
-  # ---------------- MONITORING: Prometheus + Grafana -----------------------
   prometheus:
     image: prom/prometheus:latest
     volumes: [ "./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro" ]
@@ -90,7 +77,6 @@ services:
       - "./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro"
     depends_on: [ prometheus ]
 
-  # ---------------- MIKROSERVISI -------------------------------------------
   user-service:
     build: ./services/user-service
     environment:
@@ -168,7 +154,6 @@ services:
       notification-db: { condition: service_healthy }
       kafka: { condition: service_healthy }
 
-  # Hibridni modul (Consumer + Producer)
   enrollment-processor:
     build: ./services/enrollment-processor
     environment:
@@ -192,7 +177,6 @@ services:
       SERVICE_NAME: media-service
       CORS_ORIGINS: "http://localhost:3000"
 
-  # ---------------- API GATEWAY --------------------------------------------
   gateway:
     build: ./gateway
     environment:
@@ -209,7 +193,6 @@ services:
       - speech-service
       - media-service
 
-  # ---------------- KLIJENT (UI) -------------------------------------------
   frontend:
     build:
       context: ./frontend
